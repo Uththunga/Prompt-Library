@@ -30,6 +30,8 @@ export const DocumentList: React.FC<DocumentListProps> = ({
   const [statusFilter] = useState<'all' | RAGDocument['status']>('all');
 
 
+
+
   useEffect(() => {
     if (!currentUser) return;
 
@@ -58,13 +60,10 @@ export const DocumentList: React.FC<DocumentListProps> = ({
     }
 
     try {
-      setDeleting(documentId);
       await DocumentService.deleteDocument(documentId);
     } catch (error) {
       console.error('Error deleting document:', error);
       alert('Failed to delete document. Please try again.');
-    } finally {
-      setDeleting(null);
     }
   };
 
@@ -86,7 +85,7 @@ export const DocumentList: React.FC<DocumentListProps> = ({
 
   const getStatusColor = (status: RAGDocument['status']) => {
     switch (status) {
-      case 'uploading':
+      case 'uploaded':
         return 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200';
       case 'processing':
         return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200';

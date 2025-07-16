@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Prompt, PromptVariable, PromptTemplate, PromptQualityScore } from '../../types';
+import type { Prompt, PromptVariable, PromptTemplate, PromptQualityScore } from '../../types';
 import { Button } from '../common/Button';
 import { LoadingSpinner } from '../common/LoadingSpinner';
 import { TemplateLibrary } from './TemplateLibrary';

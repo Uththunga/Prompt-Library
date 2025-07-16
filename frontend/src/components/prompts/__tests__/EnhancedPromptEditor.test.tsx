@@ -1,14 +1,14 @@
-import React from 'react';
+
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { EnhancedPromptEditor } from '../EnhancedPromptEditor';
-import { Prompt } from '../../../types';
+import type { Prompt } from '../../../types';
 
 // Mock the template service
-jest.mock('../../../services/templateService', () => ({
+vi.mock('../../../services/templateService', () => ({
   templateService: {
-    getTemplates: jest.fn().mockResolvedValue([]),
-    getCategories: jest.fn().mockResolvedValue([]),
-    incrementUsage: jest.fn().mockResolvedValue(undefined)
+    getTemplates: vi.fn().mockResolvedValue([]),
+    getCategories: vi.fn().mockResolvedValue([]),
+    incrementUsage: vi.fn().mockResolvedValue(undefined)
   }
 }));
 
@@ -34,12 +34,12 @@ const mockPrompt: Prompt = {
   ]
 };
 
-const mockOnSave = jest.fn();
-const mockOnExecute = jest.fn();
+const mockOnSave = vi.fn();
+const mockOnExecute = vi.fn();
 
 describe('EnhancedPromptEditor', () => {
   beforeEach(() => {
-    jest.clearAllMocks();
+    vi.clearAllMocks();
   });
 
   test('renders enhanced prompt editor', () => {

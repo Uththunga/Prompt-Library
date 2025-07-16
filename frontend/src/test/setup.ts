@@ -53,10 +53,14 @@ export const createMockPrompt = (overrides = {}) => ({
   id: 'test-prompt-id',
   title: 'Test Prompt',
   content: 'This is a test prompt',
+  description: 'A test prompt for testing',
   variables: [],
   tags: ['test'],
+  category: 'General',
+  isPublic: false,
   createdAt: new Date(),
   updatedAt: new Date(),
-  userId: 'test-user-id',
+  createdBy: 'test-user-id',
+  version: 1,
   ...overrides
 });

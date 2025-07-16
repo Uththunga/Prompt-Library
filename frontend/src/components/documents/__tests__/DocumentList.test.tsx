@@ -96,7 +96,7 @@ describe('DocumentList', () => {
   it('renders document list with documents', async () => {
     render(
       <TestWrapper>
-        <DocumentList userId={mockUserId} onDocumentSelect={mockOnDocumentSelect} />
+        <DocumentList onDocumentSelect={mockOnDocumentSelect} />
       </TestWrapper>
     );
 
@@ -110,7 +110,7 @@ describe('DocumentList', () => {
   it('shows document status indicators', async () => {
     render(
       <TestWrapper>
-        <DocumentList userId={mockUserId} onDocumentSelect={mockOnDocumentSelect} />
+        <DocumentList onDocumentSelect={mockOnDocumentSelect} />
       </TestWrapper>
     );
 
@@ -124,7 +124,7 @@ describe('DocumentList', () => {
   it('displays file sizes correctly', async () => {
     render(
       <TestWrapper>
-        <DocumentList userId={mockUserId} onDocumentSelect={mockOnDocumentSelect} />
+        <DocumentList onDocumentSelect={mockOnDocumentSelect} />
       </TestWrapper>
     );
 
@@ -138,7 +138,7 @@ describe('DocumentList', () => {
   it('shows search functionality', async () => {
     render(
       <TestWrapper>
-        <DocumentList userId={mockUserId} onDocumentSelect={mockOnDocumentSelect} />
+        <DocumentList onDocumentSelect={mockOnDocumentSelect} />
       </TestWrapper>
     );
 
@@ -157,7 +157,7 @@ describe('DocumentList', () => {
   it('filters documents by status', async () => {
     render(
       <TestWrapper>
-        <DocumentList userId={mockUserId} onDocumentSelect={mockOnDocumentSelect} />
+        <DocumentList onDocumentSelect={mockOnDocumentSelect} />
       </TestWrapper>
     );
 
@@ -177,7 +177,7 @@ describe('DocumentList', () => {
 
     render(
       <TestWrapper>
-        <DocumentList userId={mockUserId} onDocumentSelect={mockOnDocumentSelect} />
+        <DocumentList onDocumentSelect={mockOnDocumentSelect} />
       </TestWrapper>
     );
 
@@ -201,7 +201,7 @@ describe('DocumentList', () => {
   it('shows error message for failed documents', async () => {
     render(
       <TestWrapper>
-        <DocumentList userId={mockUserId} onDocumentSelect={mockOnDocumentSelect} />
+        <DocumentList onDocumentSelect={mockOnDocumentSelect} />
       </TestWrapper>
     );
 
@@ -213,7 +213,7 @@ describe('DocumentList', () => {
   it('handles document selection', async () => {
     render(
       <TestWrapper>
-        <DocumentList userId={mockUserId} onDocumentSelect={mockOnDocumentSelect} />
+        <DocumentList onDocumentSelect={mockOnDocumentSelect} />
       </TestWrapper>
     );
 
@@ -236,7 +236,7 @@ describe('DocumentList', () => {
 
     render(
       <TestWrapper>
-        <DocumentList userId={mockUserId} onDocumentSelect={mockOnDocumentSelect} />
+        <DocumentList onDocumentSelect={mockOnDocumentSelect} />
       </TestWrapper>
     );
 
@@ -253,7 +253,7 @@ describe('DocumentList', () => {
 
     render(
       <TestWrapper>
-        <DocumentList userId={mockUserId} onDocumentSelect={mockOnDocumentSelect} />
+        <DocumentList onDocumentSelect={mockOnDocumentSelect} />
       </TestWrapper>
     );
 
@@ -263,7 +263,7 @@ describe('DocumentList', () => {
   it('displays chunk count for completed documents', async () => {
     render(
       <TestWrapper>
-        <DocumentList userId={mockUserId} onDocumentSelect={mockOnDocumentSelect} />
+        <DocumentList onDocumentSelect={mockOnDocumentSelect} />
       </TestWrapper>
     );
 
@@ -275,7 +275,7 @@ describe('DocumentList', () => {
   it('shows download links for documents', async () => {
     render(
       <TestWrapper>
-        <DocumentList userId={mockUserId} onDocumentSelect={mockOnDocumentSelect} />
+        <DocumentList onDocumentSelect={mockOnDocumentSelect} />
       </TestWrapper>
     );
 
@@ -292,7 +292,7 @@ describe('DocumentList', () => {
 
     const { unmount } = render(
       <TestWrapper>
-        <DocumentList userId={mockUserId} onDocumentSelect={mockOnDocumentSelect} />
+        <DocumentList onDocumentSelect={mockOnDocumentSelect} />
       </TestWrapper>
     );
 
@@ -304,7 +304,7 @@ describe('DocumentList', () => {
   it('updates when userId changes', async () => {
     const { rerender } = render(
       <TestWrapper>
-        <DocumentList userId={mockUserId} onDocumentSelect={mockOnDocumentSelect} />
+        <DocumentList onDocumentSelect={mockOnDocumentSelect} />
       </TestWrapper>
     );
 
@@ -313,7 +313,7 @@ describe('DocumentList', () => {
     // Change userId
     rerender(
       <TestWrapper>
-        <DocumentList userId="new-user-id" onDocumentSelect={mockOnDocumentSelect} />
+        <DocumentList onDocumentSelect={mockOnDocumentSelect} />
       </TestWrapper>
     );
 

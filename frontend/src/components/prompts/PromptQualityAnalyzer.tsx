@@ -1,5 +1,5 @@
 import React from 'react';
-import { PromptQualityScore, PromptSuggestion } from '../../types';
+import type { PromptQualityScore, PromptSuggestion } from '../../types';
 import { Button } from '../common/Button';
 import { 
   X, 

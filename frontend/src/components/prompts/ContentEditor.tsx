@@ -1,11 +1,10 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { PromptVariable } from '../../types';
+import type { PromptVariable } from '../../types';
 import { Button } from '../common/Button';
-import { 
-  Type, 
-  Hash, 
-  ToggleLeft, 
-  List, 
+import {
+  Type,
+  Hash,
+  List,
   Plus,
   Wand2,
   FileText,
@@ -26,7 +25,7 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({
   variables
 }) => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const [cursorPosition, setCursorPosition] = useState(0);
+
   const [showVariableHelper, setShowVariableHelper] = useState(false);
 
   // Auto-resize textarea
@@ -39,7 +38,7 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({
 
   const handleTextareaChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     onChange(e.target.value);
-    setCursorPosition(e.target.selectionStart);
+    // setCursorPosition(e.target.selectionStart);
   };
 
   const insertVariable = (variableName: string) => {

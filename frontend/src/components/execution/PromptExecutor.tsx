@@ -27,7 +27,7 @@ export const PromptExecutor: React.FC<PromptExecutorProps> = ({
   onExecutionComplete
 }) => {
   const { currentUser } = useAuth();
-  const [variables, setVariables] = useState<Record<string, string | number | boolean>>({});
+  const [variables, setVariables] = useState<Record<string, string | number | boolean | string[]>>({});
   const [settings, setSettings] = useState<ExecutionSettings>({
     useRAG: false,
     model: 'gpt-3.5-turbo',
@@ -52,12 +52,6 @@ export const PromptExecutor: React.FC<PromptExecutorProps> = ({
   ];
 
   // Load user documents for RAG
-  useEffect(() => {
-    if (currentUser) {
-      loadUserDocuments();
-    }
-  }, [currentUser, loadUserDocuments]);
-
   const loadUserDocuments = useCallback(async () => {
     if (!currentUser) return;
 
@@ -72,7 +66,13 @@ export const PromptExecutor: React.FC<PromptExecutorProps> = ({
     }
   }, [currentUser]);
 
-  const handleVariableChange = (variableName: string, value: string | number | boolean) => {
+  useEffect(() => {
+    if (currentUser) {
+      loadUserDocuments();
+    }
+  }, [currentUser, loadUserDocuments]);
+
+  const handleVariableChange = (variableName: string, value: string | number | boolean | string[]) => {
     setVariables(prev => ({
       ...prev,
       [variableName]: value
@@ -180,7 +180,7 @@ export const PromptExecutor: React.FC<PromptExecutorProps> = ({
         return (
           <input
             type="checkbox"
-            checked={value}
+            checked={Boolean(value)}
             onChange={(e) => handleVariableChange(variable.name, e.target.checked)}
             className="rounded border-gray-300 text-blue-600 shadow-sm focus:border-blue-300 focus:ring focus:ring-blue-200 focus:ring-opacity-50"
           />
@@ -189,7 +189,7 @@ export const PromptExecutor: React.FC<PromptExecutorProps> = ({
         return (
           <input
             type="number"
-            value={value}
+            value={typeof value === 'number' ? value : ''}
             onChange={(e) => handleVariableChange(variable.name, parseFloat(e.target.value) || 0)}
             className="block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
             placeholder={`Enter ${variable.name}`}
@@ -198,7 +198,7 @@ export const PromptExecutor: React.FC<PromptExecutorProps> = ({
       case 'array':
         return (
           <textarea
-            value={Array.isArray(value) ? value.join('\n') : value}
+            value={Array.isArray(value) ? value.join('\n') : String(value)}
             onChange={(e) => handleVariableChange(variable.name, e.target.value.split('\n').filter(Boolean))}
             rows={3}
             className="block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
@@ -209,7 +209,7 @@ export const PromptExecutor: React.FC<PromptExecutorProps> = ({
         return (
           <input
             type="text"
-            value={value}
+            value={String(value)}
             onChange={(e) => handleVariableChange(variable.name, e.target.value)}
             className="block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
             placeholder={`Enter ${variable.name}`}

@@ -14,6 +14,8 @@ export const Documents: React.FC = () => {
   const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [refreshTrigger, setRefreshTrigger] = useState(0);
 
+
+
   const [stats, setStats] = useState<{
     total: number;
     completed: number;

@@ -1,17 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { PromptTemplate, TemplateCategory } from '../../types';
+import type { PromptTemplate, TemplateCategory } from '../../types';
 import { templateService } from '../../services/templateService';
 import { Button } from '../common/Button';
 import { LoadingSpinner } from '../common/LoadingSpinner';
-import { 
-  X, 
-  Search, 
-  Filter, 
-  Star, 
-  Users, 
-  Clock,
+import {
+  X,
+  Search,
+  Star,
+  Users,
   BookOpen,
-  Lightbulb,
   Code,
   MessageSquare,
   BarChart,

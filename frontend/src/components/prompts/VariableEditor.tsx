@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { PromptVariable } from '../../types';
+import type { PromptVariable } from '../../types';
 import { Button } from '../common/Button';
 import { 
   Plus, 

@@ -1,4 +1,4 @@
-import { PromptTemplate, TemplateCategory } from '../types';
+import type { PromptTemplate, TemplateCategory } from '../types';
 
 // Mock template data - in a real implementation, this would come from an API
 export class TemplateService {

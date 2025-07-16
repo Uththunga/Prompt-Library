@@ -4,6 +4,7 @@ import { Button } from '../common/Button';
 import { LoadingSpinner } from '../common/LoadingSpinner';
 import { TemplateLibrary } from './TemplateLibrary';
 import { PromptQualityAnalyzer } from './PromptQualityAnalyzer';
+import { PromptQualityAssistant } from './PromptQualityAssistant';
 import { VariableEditor } from './VariableEditor';
 import { ContentEditor } from './ContentEditor';
 import { 
@@ -372,6 +373,26 @@ export const EnhancedPromptEditor: React.FC<EnhancedPromptEditorProps> = ({
               </div>
             </div>
           )}
+
+          {/* Quality Assistant */}
+          <PromptQualityAssistant
+            content={content}
+            variables={variables}
+            category={category}
+            onApplySuggestion={(suggestion) => {
+              if (suggestion.type === 'rag' && suggestion.autoFix) {
+                setContent(prev => prev + '\n\nBased on the provided context: {{context}}');
+              } else if (suggestion.type === 'variables' && suggestion.autoFix) {
+                // Auto-apply variable suggestions
+                const unusedVariables = variables.filter(v => !content.includes(`{{${v.name}}}`));
+                if (unusedVariables.length > 0) {
+                  const variableText = unusedVariables.map(v => `{{${v.name}}}`).join(', ');
+                  setContent(prev => prev + `\n\nPlease include: ${variableText}`);
+                }
+              }
+            }}
+            className="mb-6"
+          />
 
           {/* Variable Editor */}
           <VariableEditor

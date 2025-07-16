@@ -403,30 +403,315 @@ def get_analytics(req: https_fn.CallableRequest) -> Dict[str, Any]:
     """Get user analytics and usage statistics"""
     if not req.auth:
         raise https_fn.HttpsError('unauthenticated', 'User must be authenticated')
-    
+
     try:
         db = firestore.client()
         user_ref = db.collection('users').document(req.auth.uid)
-        
+
         # Get prompt count
         prompts_ref = user_ref.collection('prompts')
         prompts_count = len(prompts_ref.get())
-        
+
         # Get execution count (simplified - in production, use aggregation)
         executions_count = 0
         for prompt_doc in prompts_ref.get():
             executions = prompt_doc.reference.collection('executions').get()
             executions_count += len(executions)
-        
+
         # TODO: Add more analytics like cost tracking, performance metrics, etc.
-        
+
         return {
             'promptsCount': prompts_count,
             'executionsCount': executions_count,
             'totalCost': 0.0,  # TODO: Calculate actual cost
             'avgExecutionTime': 1.5  # TODO: Calculate actual average
         }
-        
+
     except Exception as e:
         logger.error(f"Error getting analytics: {str(e)}")
         raise https_fn.HttpsError('internal', str(e))
+
+@https_fn.on_call()
+def generate_prompt(req: https_fn.CallableRequest) -> Dict[str, Any]:
+    """Generate an AI-optimized prompt based on user requirements"""
+    if not req.auth:
+        raise https_fn.HttpsError('unauthenticated', 'User must be authenticated')
+
+    try:
+        # Extract request data
+        purpose = req.data.get('purpose', '')
+        industry = req.data.get('industry', '')
+        use_case = req.data.get('useCase', '')
+        target_audience = req.data.get('targetAudience', '')
+        input_variables = req.data.get('inputVariables', [])
+        output_format = req.data.get('outputFormat', 'paragraph')
+        tone = req.data.get('tone', 'professional')
+        length = req.data.get('length', 'medium')
+        include_rag = req.data.get('includeRAG', False)
+        additional_requirements = req.data.get('additionalRequirements', '')
+
+        if not purpose:
+            raise https_fn.HttpsError('invalid-argument', 'Purpose is required')
+
+        # Run async generation
+        result = asyncio.run(_generate_prompt_async(
+            purpose, industry, use_case, target_audience, input_variables,
+            output_format, tone, length, include_rag, additional_requirements
+        ))
+
+        return result
+
+    except Exception as e:
+        logger.error(f"Error generating prompt: {str(e)}")
+        raise https_fn.HttpsError('internal', str(e))
+
+async def _generate_prompt_async(purpose: str, industry: str, use_case: str,
+                                target_audience: str, input_variables: List[Dict],
+                                output_format: str, tone: str, length: str,
+                                include_rag: bool, additional_requirements: str) -> Dict[str, Any]:
+    """Async prompt generation implementation"""
+    try:
+        # Build the generation prompt
+        generation_prompt = _build_generation_prompt(
+            purpose, industry, use_case, target_audience, input_variables,
+            output_format, tone, length, include_rag, additional_requirements
+        )
+
+        system_prompt = """You are an expert prompt engineer specializing in creating high-quality, effective AI prompts. Your task is to generate optimized prompts based on user requirements.
+
+Guidelines:
+1. Create clear, specific, and actionable prompts
+2. Include appropriate variable placeholders using {{variable_name}} syntax
+3. Apply industry-specific best practices
+4. Ensure the tone matches the requested style
+5. Structure the prompt for optimal AI model performance
+6. Include context instructions when RAG is requested
+
+Return your response as a JSON object with the following structure:
+{
+  "generatedPrompt": "The actual prompt content",
+  "title": "A descriptive title for the prompt",
+  "description": "Brief description of what the prompt does",
+  "category": "Appropriate category",
+  "tags": ["relevant", "tags"],
+  "variables": [{"name": "var_name", "type": "string", "description": "Variable description", "required": true}],
+  "suggestions": ["improvement suggestion 1", "improvement suggestion 2"]
+}"""
+
+        # Generate using OpenRouter
+        async with OpenRouterClient(openrouter_config) as llm_client:
+            llm_response = await llm_client.generate_response(
+                prompt=generation_prompt,
+                system_prompt=system_prompt
+            )
+
+        # Parse the JSON response
+        try:
+            import json
+            response_data = json.loads(llm_response.content)
+        except json.JSONDecodeError:
+            # Fallback if JSON parsing fails
+            response_data = _create_fallback_response(
+                llm_response.content, purpose, industry, input_variables
+            )
+
+        # Calculate quality score
+        quality_score = _calculate_quality_score(response_data.get('generatedPrompt', ''), input_variables)
+
+        # Prepare final result
+        result = {
+            'generatedPrompt': response_data.get('generatedPrompt', ''),
+            'title': response_data.get('title', f"{purpose.title()} Prompt"),
+            'description': response_data.get('description', f"AI-generated prompt for {purpose}"),
+            'category': response_data.get('category', industry or 'General'),
+            'tags': response_data.get('tags', [industry, use_case, tone]),
+            'variables': _format_variables(response_data.get('variables', []), input_variables),
+            'qualityScore': quality_score,
+            'suggestions': _generate_enhancement_suggestions(response_data.get('generatedPrompt', ''), quality_score),
+            'metadata': {
+                'model': llm_response.model,
+                'tokensUsed': llm_response.usage.get('total_tokens', 0),
+                'generationTime': llm_response.response_time,
+                'confidence': min(quality_score['overall'] / 100.0, 1.0)
+            }
+        }
+
+        logger.info(f"Successfully generated prompt with quality score: {quality_score['overall']}")
+        return result
+
+    except Exception as e:
+        logger.error(f"Error in async prompt generation: {str(e)}")
+        raise
+
+def _build_generation_prompt(purpose: str, industry: str, use_case: str,
+                           target_audience: str, input_variables: List[Dict],
+                           output_format: str, tone: str, length: str,
+                           include_rag: bool, additional_requirements: str) -> str:
+    """Build the prompt for AI generation"""
+
+    variables_text = ""
+    if input_variables:
+        variables_text = "\n\nRequired Variables:\n"
+        for var in input_variables:
+            variables_text += f"- {{{{ {var.get('name', '')} }}}}: {var.get('description', '')} ({var.get('type', 'string')})\n"
+
+    rag_instruction = ""
+    if include_rag:
+        rag_instruction = "\n\nRAG Integration: Include instructions for using document context. Add a {{context}} variable and instructions on how to use provided context information."
+
+    prompt = f"""Create a high-quality AI prompt with the following specifications:
+
+Purpose: {purpose}
+Industry: {industry}
+Use Case: {use_case}
+Target Audience: {target_audience}
+Output Format: {output_format}
+Tone: {tone}
+Length: {length}
+{variables_text}
+{rag_instruction}
+
+Additional Requirements: {additional_requirements}
+
+The prompt should be:
+1. Clear and specific in its instructions
+2. Optimized for AI model performance
+3. Include appropriate variable placeholders
+4. Follow industry best practices for {industry}
+5. Match the requested {tone} tone
+6. Produce output in {output_format} format
+
+Please generate an effective prompt that meets these requirements."""
+
+    return prompt
+
+def _create_fallback_response(content: str, purpose: str, industry: str, input_variables: List[Dict]) -> Dict[str, Any]:
+    """Create a fallback response when JSON parsing fails"""
+    return {
+        'generatedPrompt': content,
+        'title': f"{purpose.title()} Prompt",
+        'description': f"AI-generated prompt for {purpose}",
+        'category': industry or 'General',
+        'tags': [industry, purpose],
+        'variables': input_variables,
+        'suggestions': ["Review and refine the generated prompt", "Test with sample inputs"]
+    }
+
+def _format_variables(ai_variables: List[Dict], input_variables: List[Dict]) -> List[Dict]:
+    """Format variables from AI response, falling back to input variables"""
+    if not ai_variables:
+        return [
+            {
+                'name': var.get('name', ''),
+                'type': var.get('type', 'string'),
+                'description': var.get('description', ''),
+                'required': var.get('required', True)
+            }
+            for var in input_variables
+        ]
+
+    return [
+        {
+            'name': var.get('name', ''),
+            'type': var.get('type', 'string'),
+            'description': var.get('description', ''),
+            'required': var.get('required', True)
+        }
+        for var in ai_variables
+    ]
+
+def _calculate_quality_score(prompt: str, variables: List[Dict]) -> Dict[str, Any]:
+    """Calculate quality score for generated prompt"""
+    if not prompt:
+        return {
+            'overall': 0,
+            'structure': 0,
+            'clarity': 0,
+            'variables': 0,
+            'ragCompatibility': 0,
+            'suggestions': []
+        }
+
+    # Basic scoring algorithm
+    structure_score = 70  # Base score
+    if len(prompt.split('\n')) > 1:
+        structure_score += 10  # Multi-line structure
+    if any(word in prompt.lower() for word in ['please', 'you are', 'your task']):
+        structure_score += 10  # Clear instructions
+
+    clarity_score = 70  # Base score
+    if len(prompt.split()) > 20:
+        clarity_score += 10  # Sufficient detail
+    if prompt.count('{{') == prompt.count('}}'):
+        clarity_score += 10  # Proper variable syntax
+
+    variables_score = 50  # Base score
+    if variables:
+        variables_score = 80  # Has variables
+        if all('{{' + var.get('name', '') + '}}' in prompt for var in variables):
+            variables_score = 90  # All variables used
+
+    rag_score = 60  # Base score
+    if '{{context}}' in prompt or 'context' in prompt.lower():
+        rag_score = 85  # RAG compatible
+
+    overall = (structure_score + clarity_score + variables_score + rag_score) // 4
+
+    return {
+        'overall': min(overall, 100),
+        'structure': min(structure_score, 100),
+        'clarity': min(clarity_score, 100),
+        'variables': min(variables_score, 100),
+        'ragCompatibility': min(rag_score, 100),
+        'suggestions': []
+    }
+
+def _generate_enhancement_suggestions(prompt: str, quality_score: Dict) -> List[Dict]:
+    """Generate enhancement suggestions based on prompt analysis"""
+    suggestions = []
+
+    if quality_score['structure'] < 80:
+        suggestions.append({
+            'id': 'structure_improvement',
+            'type': 'structure',
+            'title': 'Improve Structure',
+            'description': 'Consider adding clear sections or steps to your prompt',
+            'impact': 'medium',
+            'category': 'Structure',
+            'autoApplicable': False
+        })
+
+    if quality_score['clarity'] < 80:
+        suggestions.append({
+            'id': 'clarity_improvement',
+            'type': 'clarity',
+            'title': 'Enhance Clarity',
+            'description': 'Add more specific instructions or examples',
+            'impact': 'high',
+            'category': 'Clarity',
+            'autoApplicable': False
+        })
+
+    if quality_score['variables'] < 80:
+        suggestions.append({
+            'id': 'variables_improvement',
+            'type': 'variables',
+            'title': 'Optimize Variables',
+            'description': 'Ensure all variables are properly defined and used',
+            'impact': 'medium',
+            'category': 'Variables',
+            'autoApplicable': False
+        })
+
+    if quality_score['ragCompatibility'] < 80:
+        suggestions.append({
+            'id': 'rag_improvement',
+            'type': 'rag_optimization',
+            'title': 'Add RAG Support',
+            'description': 'Include context variable and instructions for document-based responses',
+            'impact': 'low',
+            'category': 'RAG',
+            'autoApplicable': True
+        })
+
+    return suggestions

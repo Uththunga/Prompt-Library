@@ -189,3 +189,82 @@ export interface WorkspaceSettings {
   allowInvites: boolean;
   defaultPermissions: 'read' | 'write' | 'admin';
 }
+
+// AI-Assisted Prompt Generation Types
+export interface PromptGenerationRequest {
+  purpose: string;
+  industry: string;
+  useCase: string;
+  targetAudience?: string;
+  inputVariables: PromptGenerationVariable[];
+  outputFormat: 'paragraph' | 'bullet_points' | 'structured_data' | 'json' | 'table' | 'list';
+  tone: 'professional' | 'casual' | 'technical' | 'friendly' | 'formal' | 'creative';
+  length: 'short' | 'medium' | 'long';
+  includeRAG?: boolean;
+  additionalRequirements?: string;
+}
+
+export interface PromptGenerationVariable {
+  name: string;
+  description: string;
+  type: 'string' | 'number' | 'boolean' | 'array';
+  required: boolean;
+  example?: string;
+}
+
+export interface PromptGenerationResponse {
+  generatedPrompt: string;
+  title: string;
+  description: string;
+  category: string;
+  tags: string[];
+  variables: PromptVariable[];
+  qualityScore: PromptQualityScore;
+  suggestions: PromptEnhancementSuggestion[];
+  metadata: {
+    model: string;
+    tokensUsed: number;
+    generationTime: number;
+    confidence: number;
+  };
+}
+
+export interface PromptEnhancementSuggestion {
+  id: string;
+  type: 'clarity' | 'structure' | 'variables' | 'industry_specific' | 'performance' | 'rag_optimization';
+  title: string;
+  description: string;
+  originalText?: string;
+  suggestedText?: string;
+  impact: 'low' | 'medium' | 'high';
+  category: string;
+  autoApplicable: boolean;
+}
+
+export interface IndustryTemplate {
+  id: string;
+  name: string;
+  description: string;
+  commonUseCases: string[];
+  recommendedTone: string[];
+  typicalVariables: string[];
+  bestPractices: string[];
+}
+
+export interface PromptGenerationFormData {
+  step: 'basic_info' | 'variables' | 'preferences' | 'review';
+  basicInfo: {
+    purpose: string;
+    industry: string;
+    useCase: string;
+    targetAudience: string;
+  };
+  variables: PromptGenerationVariable[];
+  preferences: {
+    outputFormat: string;
+    tone: string;
+    length: string;
+    includeRAG: boolean;
+    additionalRequirements: string;
+  };
+}

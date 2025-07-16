@@ -36,12 +36,14 @@ PromptLibrary is a modern, AI-powered platform that helps you create, manage, an
 
 ### Key Features
 
-✅ **Document Upload & Processing**: PDF, DOCX, TXT, MD files up to 10MB  
-✅ **AI-Powered Responses**: Free access to Llama 3.2, Gemma, Phi-3 models  
-✅ **RAG Enhancement**: Context-aware responses using your documents  
-✅ **Prompt Templates**: Reusable prompts with variables  
-✅ **Real-time Updates**: Live status tracking and notifications  
-✅ **Mobile-Friendly**: Responsive design for all devices  
+✅ **AI-Assisted Prompt Generation**: Intelligent prompt creation with guided wizard
+✅ **Document Upload & Processing**: PDF, DOCX, TXT, MD files up to 10MB
+✅ **AI-Powered Responses**: Free access to Llama 3.2, Gemma, Phi-3 models
+✅ **RAG Enhancement**: Context-aware responses using your documents
+✅ **Prompt Templates**: Reusable prompts with variables
+✅ **Real-time Quality Analysis**: Instant feedback and improvement suggestions
+✅ **Real-time Updates**: Live status tracking and notifications
+✅ **Mobile-Friendly**: Responsive design for all devices
 
 ### System Requirements
 
@@ -201,6 +203,116 @@ Please provide a concise summary of the following content:
 
 Focus on the main points and key takeaways.
 ```
+
+### AI-Assisted Prompt Generation ✨
+
+PromptLibrary now features intelligent AI-assisted prompt generation that helps you create optimized prompts through a guided wizard. This feature is perfect for both beginners and experienced users who want to leverage AI expertise.
+
+#### Getting Started with AI Generation
+
+1. **Navigate to Prompts**: Click "Prompts" in the sidebar
+2. **Choose Creation Method**:
+   - **AI-Assisted Creation**: Use the intelligent wizard (recommended)
+   - **Create from Scratch**: Traditional manual creation
+
+#### The AI Generation Wizard
+
+The wizard guides you through four simple steps:
+
+**Step 1: Basic Information**
+- **Purpose**: What should your prompt accomplish?
+  - Example: "Generate customer support responses"
+- **Industry**: Select your domain (Healthcare, Finance, Technology, etc.)
+- **Use Case**: Choose from common scenarios (Customer Support, Content Generation, etc.)
+- **Target Audience**: Who will use the generated responses? (optional)
+
+**Step 2: Define Variables**
+- **Add Variables**: Click "Add Variable" to define dynamic content
+- **Variable Properties**:
+  - Name: Identifier like `customer_name` or `product_type`
+  - Description: What this variable represents
+  - Type: String, Number, Boolean, or Array
+  - Required: Whether this input is mandatory
+  - Example: Sample value to guide users
+
+**Step 3: Customize Preferences**
+- **Output Format**: Choose how responses should be structured
+  - Paragraph: Continuous text
+  - Bullet Points: Listed items
+  - Structured Data: Organized sections
+  - JSON: Machine-readable format
+  - Table: Tabular layout
+  - List: Numbered items
+- **Tone & Style**: Select the appropriate voice
+  - Professional: Formal business tone
+  - Casual: Relaxed and friendly
+  - Technical: Precise and detailed
+  - Friendly: Warm and approachable
+  - Formal: Official and structured
+  - Creative: Imaginative and expressive
+- **Response Length**: Control output detail
+  - Short: 1-2 sentences
+  - Medium: 1-2 paragraphs
+  - Long: Multiple paragraphs
+- **RAG Support**: Enable document context integration
+- **Additional Requirements**: Any specific constraints or instructions
+
+**Step 4: Review & Generate**
+- Review all your requirements
+- Click "Generate Prompt" to create your optimized prompt
+- The AI will generate a high-quality prompt with:
+  - Proper structure and instructions
+  - Industry-specific terminology
+  - Appropriate variable placeholders
+  - Quality score and improvement suggestions
+
+#### Quality Assistant
+
+After generation, the Quality Assistant provides real-time feedback:
+
+- **Overall Score**: Comprehensive quality rating (0-100%)
+- **Detailed Metrics**:
+  - **Clarity**: How clear and understandable the instructions are
+  - **Structure**: Organization and logical flow
+  - **Variables**: Effective use of dynamic content
+  - **RAG Ready**: Compatibility with document context
+  - **Industry Optimized**: Domain-specific best practices
+- **Improvement Suggestions**: Actionable recommendations
+- **Auto-Fix Options**: One-click improvements for common issues
+
+#### Enhancement Features
+
+**AI Enhancement**: Click "AI Enhance" on any existing prompt to get intelligent suggestions for improvement.
+
+**Industry Templates**: The system provides industry-specific guidance:
+- **Healthcare**: HIPAA-aware structures, medical terminology
+- **Finance**: Regulatory compliance, risk disclaimers
+- **Technology**: Technical accuracy, code integration
+- **Marketing**: Brand voice, conversion optimization
+- **Education**: Age-appropriate language, learning outcomes
+
+#### Best Practices for AI Generation
+
+1. **Be Specific**: Provide clear, detailed purpose statements
+2. **Choose Correct Industry**: Enables domain-specific optimizations
+3. **Define Meaningful Variables**: Use descriptive names and clear descriptions
+4. **Review Suggestions**: Apply relevant AI recommendations
+5. **Test with Real Data**: Validate prompts with actual use cases
+6. **Iterate and Improve**: Use the enhancement features to refine prompts
+
+#### Troubleshooting AI Generation
+
+**If generation fails:**
+- Check your internet connection
+- Ensure all required fields are completed
+- Try with simpler requirements
+- Contact support if issues persist
+
+**For low quality scores:**
+- Add more specific instructions
+- Include relevant variables
+- Structure content with clear sections
+- Apply AI suggestions for improvement
 
 #### Using Variables
 

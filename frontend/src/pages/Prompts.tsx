@@ -2,10 +2,10 @@ import React, { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { promptService } from '../services/firestore';
 import type { Prompt } from '../types';
-import { EnhancedPromptEditor } from '../components/prompts/EnhancedPromptEditor';
+import { AIEnhancedPromptEditor } from '../components/prompts/AIEnhancedPromptEditor';
 import { PromptList } from '../components/prompts/PromptList';
 import { Button } from '../components/common/Button';
-import { Plus, ArrowLeft } from 'lucide-react';
+import { Plus, ArrowLeft, Sparkles } from 'lucide-react';
 
 type ViewMode = 'list' | 'create' | 'edit';
 
@@ -94,13 +94,24 @@ export const Prompts: React.FC = () => {
           </div>
 
           {viewMode === 'list' && (
-            <Button
-              variant="primary"
-              onClick={handleCreatePrompt}
-            >
-              <Plus className="w-4 h-4 mr-2" />
-              New Prompt
-            </Button>
+            <div className="flex items-center space-x-3">
+              <Button
+                variant="outline"
+                onClick={handleCreatePrompt}
+                className="flex items-center"
+              >
+                <Plus className="w-4 h-4 mr-2" />
+                Create from Scratch
+              </Button>
+              <Button
+                variant="primary"
+                onClick={handleCreatePrompt}
+                className="flex items-center"
+              >
+                <Sparkles className="w-4 h-4 mr-2" />
+                AI-Assisted Creation
+              </Button>
+            </div>
           )}
         </div>
       </div>
@@ -114,7 +125,7 @@ export const Prompts: React.FC = () => {
       )}
 
       {(viewMode === 'create' || viewMode === 'edit') && (
-        <EnhancedPromptEditor
+        <AIEnhancedPromptEditor
           prompt={selectedPrompt}
           onSave={handleSavePrompt}
           onExecute={handleExecuteFromEditor}

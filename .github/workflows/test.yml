@@ -1,0 +1,100 @@
+name: Run Tests
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  frontend-tests:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+          
+      - name: Install dependencies
+        run: |
+          cd frontend
+          npm ci
+          
+      - name: Run tests
+        run: |
+          cd frontend
+          npm run test -- --coverage --watchAll=false
+          
+      - name: Run linting
+        run: |
+          cd frontend
+          npm run lint
+          
+      - name: Type check
+        run: |
+          cd frontend
+          npx tsc --noEmit
+          
+      - name: Build
+        run: |
+          cd frontend
+          npm run build
+          
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v3
+        with:
+          file: ./frontend/coverage/lcov.info
+          flags: frontend
+          name: frontend-coverage
+          
+  backend-tests:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+          
+      - name: Install dependencies
+        run: |
+          cd functions
+          pip install -r requirements.txt
+          pip install pytest pytest-cov black flake8 mypy
+          
+      - name: Run linting
+        run: |
+          cd functions
+          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+          flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+          
+      - name: Run type checking
+        run: |
+          cd functions
+          mypy . --ignore-missing-imports
+          
+      - name: Run code formatting check
+        run: |
+          cd functions
+          black --check .
+          
+      - name: Run tests
+        run: |
+          cd functions
+          pytest tests/ --verbose --cov=. --cov-report=xml
+          
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v3
+        with:
+          file: ./functions/coverage.xml
+          flags: backend
+          name: backend-coverage

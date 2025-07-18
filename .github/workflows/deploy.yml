@@ -82,20 +82,49 @@ jobs:
           cd frontend
           npm run build
         env:
-          VITE_FIREBASE_API_KEY: "AIzaSyDJWjw2e8FayU3CvIWyGXXFAqDCTFN5CJs"
-          VITE_FIREBASE_AUTH_DOMAIN: "rag-prompt-library.firebaseapp.com"
-          VITE_FIREBASE_PROJECT_ID: "rag-prompt-library"
-          VITE_FIREBASE_STORAGE_BUCKET: "rag-prompt-library.firebasestorage.app"
-          VITE_FIREBASE_MESSAGING_SENDER_ID: "743998930129"
-          VITE_FIREBASE_APP_ID: "1:743998930129:web:69dd61394ed81598cd99f0"
+          VITE_FIREBASE_API_KEY: '${{ secrets.VITE_FIREBASE_API_KEY }}'
+          VITE_FIREBASE_AUTH_DOMAIN: '${{ secrets.VITE_FIREBASE_AUTH_DOMAIN }}'
+          VITE_FIREBASE_PROJECT_ID: '${{ secrets.VITE_FIREBASE_PROJECT_ID }}'
+          VITE_FIREBASE_STORAGE_BUCKET: '${{ secrets.VITE_FIREBASE_STORAGE_BUCKET }}'
+          VITE_FIREBASE_MESSAGING_SENDER_ID: '${{ secrets.VITE_FIREBASE_MESSAGING_SENDER_ID }}'
+          VITE_FIREBASE_APP_ID: '${{ secrets.VITE_FIREBASE_APP_ID }}'
           
-      - name: Deploy to Firebase Staging
-        uses: FirebaseExtended/action-hosting-deploy@v0
+      - name: Setup Python for Functions
+        uses: actions/setup-python@v4
         with:
-          repoToken: '${{ secrets.GITHUB_TOKEN }}'
-          firebaseServiceAccount: '${{ secrets.FIREBASE_SERVICE_ACCOUNT || github.token }}'
-          projectId: prompt-library-staging
-          channelId: live
+          python-version: '3.11'
+
+      - name: Install Python dependencies
+        run: |
+          cd functions
+          pip install -r requirements.txt
+
+      - name: Setup Firebase CLI
+        run: |
+          npm install -g firebase-tools
+          echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}' > $HOME/firebase-service-account.json
+          export GOOGLE_APPLICATION_CREDENTIALS=$HOME/firebase-service-account.json
+          firebase use rag-prompt-library
+
+      - name: Set Firebase Functions Environment Variables
+        run: |
+          export GOOGLE_APPLICATION_CREDENTIALS=$HOME/firebase-service-account.json
+          firebase functions:config:set \
+            openrouter.api_key="${{ secrets.OPENROUTER_API_KEY }}" \
+            openrouter.api_key_rag="${{ secrets.OPENROUTER_API_KEY_RAG }}" \
+            openai.api_key="${{ secrets.OPENAI_API_KEY }}"
+
+      - name: Deploy to Firebase Staging
+        run: |
+          export GOOGLE_APPLICATION_CREDENTIALS=$HOME/firebase-service-account.json
+          firebase deploy --only hosting,functions --project rag-prompt-library
+        env:
+          VITE_FIREBASE_API_KEY: '${{ secrets.VITE_FIREBASE_API_KEY }}'
+          VITE_FIREBASE_AUTH_DOMAIN: '${{ secrets.VITE_FIREBASE_AUTH_DOMAIN }}'
+          VITE_FIREBASE_PROJECT_ID: '${{ secrets.VITE_FIREBASE_PROJECT_ID }}'
+          VITE_FIREBASE_STORAGE_BUCKET: '${{ secrets.VITE_FIREBASE_STORAGE_BUCKET }}'
+          VITE_FIREBASE_MESSAGING_SENDER_ID: '${{ secrets.VITE_FIREBASE_MESSAGING_SENDER_ID }}'
+          VITE_FIREBASE_APP_ID: '${{ secrets.VITE_FIREBASE_APP_ID }}'
           
   deploy-production:
     needs: test
@@ -123,17 +152,46 @@ jobs:
           cd frontend
           npm run build
         env:
-          VITE_FIREBASE_API_KEY: "AIzaSyDJWjw2e8FayU3CvIWyGXXFAqDCTFN5CJs"
-          VITE_FIREBASE_AUTH_DOMAIN: "rag-prompt-library.firebaseapp.com"
-          VITE_FIREBASE_PROJECT_ID: "rag-prompt-library"
-          VITE_FIREBASE_STORAGE_BUCKET: "rag-prompt-library.firebasestorage.app"
-          VITE_FIREBASE_MESSAGING_SENDER_ID: "743998930129"
-          VITE_FIREBASE_APP_ID: "1:743998930129:web:69dd61394ed81598cd99f0"
+          VITE_FIREBASE_API_KEY: '${{ secrets.VITE_FIREBASE_API_KEY }}'
+          VITE_FIREBASE_AUTH_DOMAIN: '${{ secrets.VITE_FIREBASE_AUTH_DOMAIN }}'
+          VITE_FIREBASE_PROJECT_ID: '${{ secrets.VITE_FIREBASE_PROJECT_ID }}'
+          VITE_FIREBASE_STORAGE_BUCKET: '${{ secrets.VITE_FIREBASE_STORAGE_BUCKET }}'
+          VITE_FIREBASE_MESSAGING_SENDER_ID: '${{ secrets.VITE_FIREBASE_MESSAGING_SENDER_ID }}'
+          VITE_FIREBASE_APP_ID: '${{ secrets.VITE_FIREBASE_APP_ID }}'
           
-      - name: Deploy to Firebase Production
-        uses: FirebaseExtended/action-hosting-deploy@v0
+      - name: Setup Python for Functions
+        uses: actions/setup-python@v4
         with:
-          repoToken: '${{ secrets.GITHUB_TOKEN }}'
-          firebaseServiceAccount: '${{ secrets.FIREBASE_SERVICE_ACCOUNT || github.token }}'
-          projectId: prompt-library-prod
-          channelId: live
+          python-version: '3.11'
+
+      - name: Install Python dependencies
+        run: |
+          cd functions
+          pip install -r requirements.txt
+
+      - name: Setup Firebase CLI
+        run: |
+          npm install -g firebase-tools
+          echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}' > $HOME/firebase-service-account.json
+          export GOOGLE_APPLICATION_CREDENTIALS=$HOME/firebase-service-account.json
+          firebase use rag-prompt-library
+
+      - name: Set Firebase Functions Environment Variables
+        run: |
+          export GOOGLE_APPLICATION_CREDENTIALS=$HOME/firebase-service-account.json
+          firebase functions:config:set \
+            openrouter.api_key="${{ secrets.OPENROUTER_API_KEY }}" \
+            openrouter.api_key_rag="${{ secrets.OPENROUTER_API_KEY_RAG }}" \
+            openai.api_key="${{ secrets.OPENAI_API_KEY }}"
+
+      - name: Deploy to Firebase Production
+        run: |
+          export GOOGLE_APPLICATION_CREDENTIALS=$HOME/firebase-service-account.json
+          firebase deploy --only hosting,functions --project rag-prompt-library
+        env:
+          VITE_FIREBASE_API_KEY: '${{ secrets.VITE_FIREBASE_API_KEY }}'
+          VITE_FIREBASE_AUTH_DOMAIN: '${{ secrets.VITE_FIREBASE_AUTH_DOMAIN }}'
+          VITE_FIREBASE_PROJECT_ID: '${{ secrets.VITE_FIREBASE_PROJECT_ID }}'
+          VITE_FIREBASE_STORAGE_BUCKET: '${{ secrets.VITE_FIREBASE_STORAGE_BUCKET }}'
+          VITE_FIREBASE_MESSAGING_SENDER_ID: '${{ secrets.VITE_FIREBASE_MESSAGING_SENDER_ID }}'
+          VITE_FIREBASE_APP_ID: '${{ secrets.VITE_FIREBASE_APP_ID }}'

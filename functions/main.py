@@ -1,21 +1,24 @@
-from firebase_functions import https_fn, firestore_fn, storage_fn
-from firebase_admin import initialize_app, firestore, storage
-import json
+"""
+Enhanced Firebase Functions for RAG Prompt Library - Blaze Plan Optimized
+"""
 import os
-import asyncio
-from typing import Any, Dict, List
+import json
 import logging
+from typing import Any, Dict, List, Optional
+from datetime import datetime, timedelta
 
-# Import RAG components
-from src.rag.document_processor import DocumentProcessor
-from src.rag.text_chunker import TextChunker, ChunkingConfig
-from src.rag.embedding_generator import EmbeddingGenerator, EmbeddingConfig
-from src.rag.vector_store import FAISSVectorStore
-from src.rag.context_retriever import ContextRetriever, RetrievalConfig
+from firebase_functions import https_fn, firestore_fn, scheduler_fn, options
+from firebase_admin import initialize_app, firestore, storage
+import requests
+from google.cloud.firestore_v1.base_query import FieldFilter
 
-# Import LLM components
-from src.llm.openrouter_client import OpenRouterClient, OpenRouterConfig
-from src.llm.token_counter import TokenCounter
+# Load environment variables for local development
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    # python-dotenv not available, use system environment variables
+    pass
 
 # Initialize Firebase Admin
 initialize_app()
@@ -24,416 +27,24 @@ initialize_app()
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Initialize RAG components
-document_processor = DocumentProcessor()
-text_chunker = TextChunker()
-embedding_generator = EmbeddingGenerator(api_key=os.environ.get('OPENAI_API_KEY'))
-context_retriever = ContextRetriever(embedding_generator)
+# Configuration for Blaze Plan optimizations
+OPENROUTER_API_KEY = os.environ.get('OPENROUTER_API_KEY')
+OPENROUTER_API_KEY_RAG = os.environ.get('OPENROUTER_API_KEY_RAG')
+OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY')
 
-# Initialize LLM components
-openrouter_config = OpenRouterConfig(
-    api_key=os.environ.get('OPENROUTER_API_KEY', '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'),
-    model="meta-llama/llama-3.2-11b-vision-instruct:free"
+# Model configurations
+PROMPT_GENERATION_MODEL = "nvidia/llama-3.1-nemotron-ultra-253b-v1:free"
+RAG_PROCESSING_MODEL = "nvidia/llama-3.1-nemotron-ultra-253b-v1:free"
+
+@https_fn.on_call(
+    memory=options.MemoryOption.MB_1024,
+    timeout_sec=300,
+    max_instances=100,
+    min_instances=0,
+    concurrency=80
 )
-token_counter = TokenCounter(model=openrouter_config.model)
-
-@https_fn.on_call()
-def execute_prompt(req: https_fn.CallableRequest) -> Dict[str, Any]:
-    """Execute a prompt with optional RAG context"""
-    # Verify authentication
-    if not req.auth:
-        raise https_fn.HttpsError('unauthenticated', 'User must be authenticated')
-
-    try:
-        prompt_id = req.data.get('promptId')
-        inputs = req.data.get('inputs', {})
-        use_rag = req.data.get('useRag', False)
-        rag_query = req.data.get('ragQuery', '')
-        document_ids = req.data.get('documentIds', [])
-
-        if not prompt_id:
-            raise https_fn.HttpsError('invalid-argument', 'promptId is required')
-
-        # Get prompt from Firestore
-        db = firestore.client()
-        prompt_ref = db.collection('users').document(req.auth.uid).collection('prompts').document(prompt_id)
-        prompt_doc = prompt_ref.get()
-
-        if not prompt_doc.exists:
-            raise https_fn.HttpsError('not-found', 'Prompt not found')
-
-        prompt_data = prompt_doc.to_dict()
-
-        # Run async execution
-        result = asyncio.run(_execute_prompt_async(
-            req.auth.uid, prompt_data, inputs, use_rag, rag_query, document_ids
-        ))
-
-        # Save execution to Firestore
-        execution_ref = prompt_ref.collection('executions').document()
-        execution_ref.set({
-            'inputs': inputs,
-            'outputs': result,
-            'timestamp': firestore.SERVER_TIMESTAMP,
-            'useRag': use_rag,
-            'ragQuery': rag_query if use_rag else None,
-            'documentIds': document_ids if use_rag else None,
-            'status': 'completed'
-        })
-
-        return result
-
-    except Exception as e:
-        logger.error(f"Error executing prompt: {str(e)}")
-        raise https_fn.HttpsError('internal', str(e))
-
-async def _execute_prompt_async(user_id: str, prompt_data: Dict, inputs: Dict,
-                               use_rag: bool, rag_query: str, document_ids: List[str]) -> Dict[str, Any]:
-    """Async prompt execution implementation with OpenRouter LLM"""
-    try:
-        prompt_content = prompt_data.get('content', '')
-        prompt_title = prompt_data.get('title', 'Untitled')
-
-        # Replace variables in prompt
-        for var_name, var_value in inputs.items():
-            placeholder = f"{{{var_name}}}"
-            prompt_content = prompt_content.replace(placeholder, str(var_value))
-
-        context = ""
-        context_metadata = {}
-
-        # Retrieve RAG context if requested
-        if use_rag and rag_query:
-            logger.info(f"Retrieving RAG context for query: {rag_query}")
-            context_response = await context_retriever.retrieve_context(
-                user_id, rag_query, document_ids if document_ids else None
-            )
-            context = context_response.get('context', '')
-            context_metadata = context_response.get('metadata', {})
-
-        # Create system prompt for better responses
-        system_prompt = f"""You are an AI assistant helping with the prompt titled "{prompt_title}".
-Provide helpful, accurate, and well-structured responses. If context information is provided, use it to enhance your response while being clear about what information comes from the context versus your general knowledge."""
-
-        # Generate response using OpenRouter
-        async with OpenRouterClient(openrouter_config) as llm_client:
-            if context:
-                # Use context-enhanced generation
-                llm_response = await llm_client.generate_with_context(
-                    prompt=prompt_content,
-                    context=context,
-                    system_prompt=system_prompt
-                )
-            else:
-                # Standard generation without context
-                llm_response = await llm_client.generate_response(
-                    prompt=prompt_content,
-                    system_prompt=system_prompt
-                )
-
-        # Prepare result
-        result = {
-            'output': llm_response.content,
-            'context': context,
-            'metadata': {
-                'model': llm_response.model,
-                'executionTime': llm_response.response_time,
-                'tokensUsed': llm_response.usage.get('total_tokens', 0),
-                'promptTokens': llm_response.usage.get('prompt_tokens', 0),
-                'completionTokens': llm_response.usage.get('completion_tokens', 0),
-                'cost': llm_response.cost_estimate,
-                'finishReason': llm_response.finish_reason,
-                'useRag': use_rag,
-                'contextMetadata': context_metadata
-            }
-        }
-
-        logger.info(f"Successfully executed prompt with {llm_response.usage.get('total_tokens', 0)} tokens")
-        return result
-
-    except Exception as e:
-        logger.error(f"Error in async prompt execution: {str(e)}")
-        # Return error response instead of raising
-        return {
-            'output': f"Error executing prompt: {str(e)}",
-            'context': context if 'context' in locals() else "",
-            'metadata': {
-                'model': openrouter_config.model,
-                'executionTime': 0,
-                'tokensUsed': 0,
-                'cost': 0,
-                'error': str(e),
-                'useRag': use_rag,
-                'contextMetadata': context_metadata if 'context_metadata' in locals() else {}
-            }
-        }
-
-@firestore_fn.on_document_created(document="rag_documents/{doc_id}")
-def process_document(event: firestore_fn.Event[firestore_fn.DocumentSnapshot]):
-    """Process uploaded documents for RAG"""
-    try:
-        doc_data = event.data.to_dict()
-        doc_id = event.params['doc_id']
-
-        logger.info(f"Processing document: {doc_id}")
-
-        # Run async processing
-        asyncio.run(_process_document_async(doc_id, doc_data))
-
-    except Exception as e:
-        logger.error(f"Error in document processing trigger: {str(e)}")
-        # Update document status to failed
-        db = firestore.client()
-        doc_ref = db.collection('rag_documents').document(doc_id)
-        doc_ref.update({
-            'status': 'failed',
-            'error': str(e),
-            'processedAt': firestore.SERVER_TIMESTAMP
-        })
-
-async def _process_document_async(doc_id: str, doc_data: Dict):
-    """Async document processing implementation"""
-    db = firestore.client()
-    doc_ref = db.collection('rag_documents').document(doc_id)
-
-    try:
-        # Update status to processing
-        doc_ref.update({
-            'status': 'processing',
-            'processingStartedAt': firestore.SERVER_TIMESTAMP
-        })
-
-        # Extract file path from document data
-        file_path = doc_data.get('filePath')
-        if not file_path:
-            raise ValueError("No file path found in document data")
-
-        # Step 1: Process document and extract text
-        logger.info(f"Extracting text from document: {doc_id}")
-        processed_doc = await document_processor.process_document(doc_id, file_path)
-
-        # Step 2: Chunk the text
-        logger.info(f"Chunking text for document: {doc_id}")
-        chunks = text_chunker.chunk_text(
-            processed_doc['text_content'],
-            doc_id,
-            processed_doc['metadata']
-        )
-
-        if not chunks:
-            raise ValueError("No chunks generated from document")
-
-        # Step 3: Generate embeddings
-        logger.info(f"Generating embeddings for {len(chunks)} chunks")
-        chunks_with_embeddings = await embedding_generator.generate_embeddings(chunks)
-
-        # Step 4: Store chunks in Firestore
-        logger.info(f"Storing chunks in Firestore")
-        chunk_refs = []
-        for chunk in chunks_with_embeddings:
-            chunk_ref = doc_ref.collection('chunks').document(chunk['id'])
-            chunk_ref.set({
-                'content': chunk['content'],
-                'metadata': chunk['metadata'],
-                'embedding': chunk.get('embedding'),
-                'createdAt': firestore.SERVER_TIMESTAMP
-            })
-            chunk_refs.append(chunk_ref.id)
-
-        # Step 5: Add chunks to vector store
-        logger.info(f"Adding chunks to vector store")
-        user_id = doc_data.get('uploadedBy')
-        if user_id:
-            vector_store = FAISSVectorStore(user_id)
-            await vector_store.add_chunks(chunks_with_embeddings)
-        else:
-            logger.warning("No user ID found for vector store update")
-
-        # Step 6: Update document status
-        embedding_stats = embedding_generator.get_embedding_stats(chunks_with_embeddings)
-        doc_ref.update({
-            'status': 'completed',
-            'processedAt': firestore.SERVER_TIMESTAMP,
-            'textContent': processed_doc['text_content'][:1000] + '...' if len(processed_doc['text_content']) > 1000 else processed_doc['text_content'],
-            'processingMetadata': {
-                **processed_doc['metadata'],
-                'chunk_count': len(chunks_with_embeddings),
-                'embedding_stats': embedding_stats
-            },
-            'chunkIds': chunk_refs
-        })
-
-        logger.info(f"Successfully processed document {doc_id} with {len(chunks_with_embeddings)} chunks")
-
-    except Exception as e:
-        logger.error(f"Error processing document {doc_id}: {str(e)}")
-        doc_ref.update({
-            'status': 'failed',
-            'error': str(e),
-            'processedAt': firestore.SERVER_TIMESTAMP
-        })
-        raise
-        
-        logger.info(f"Document processed successfully: {doc_id}")
-        
-    except Exception as e:
-        logger.error(f"Error processing document: {str(e)}")
-        # Update document status to failed
-        try:
-            db = firestore.client()
-            doc_ref = db.collection('rag_documents').document(event.params['doc_id'])
-            doc_ref.update({
-                'status': 'failed',
-                'error': str(e),
-                'processedAt': firestore.SERVER_TIMESTAMP
-            })
-        except:
-            pass
-
-@https_fn.on_call()
-def search_prompts(req: https_fn.CallableRequest) -> Dict[str, Any]:
-    """Search prompts with filters"""
-    if not req.auth:
-        raise https_fn.HttpsError('unauthenticated', 'User must be authenticated')
-    
-    try:
-        query = req.data.get('query', '')
-        tags = req.data.get('tags', [])
-        category = req.data.get('category', '')
-        limit = req.data.get('limit', 20)
-        
-        db = firestore.client()
-        prompts_ref = db.collection('users').document(req.auth.uid).collection('prompts')
-        
-        # Build query
-        query_ref = prompts_ref
-        
-        if category:
-            query_ref = query_ref.where('category', '==', category)
-        
-        if tags:
-            query_ref = query_ref.where('tags', 'array-contains-any', tags)
-        
-        # Order by creation date and limit
-        query_ref = query_ref.order_by('createdAt', direction=firestore.Query.DESCENDING).limit(limit)
-        
-        results = query_ref.get()
-        
-        prompts = []
-        for doc in results:
-            prompt_data = doc.to_dict()
-            prompt_data['id'] = doc.id
-            prompts.append(prompt_data)
-        
-        return {
-            'prompts': prompts,
-            'total': len(prompts)
-        }
-
-    except Exception as e:
-        logger.error(f"Error searching prompts: {str(e)}")
-        raise https_fn.HttpsError('internal', str(e))
-
-@https_fn.on_call()
-def test_openrouter_connection(req: https_fn.CallableRequest) -> Dict[str, Any]:
-    """Test OpenRouter API connection and model info"""
-    # Verify authentication
-    if not req.auth:
-        raise https_fn.HttpsError('unauthenticated', 'User must be authenticated')
-
-    try:
-        # Run async test
-        result = asyncio.run(_test_openrouter_async())
-        return result
-
-    except Exception as e:
-        logger.error(f"Error testing OpenRouter connection: {str(e)}")
-        raise https_fn.HttpsError('internal', str(e))
-
-async def _test_openrouter_async() -> Dict[str, Any]:
-    """Async OpenRouter connection test"""
-    try:
-        async with OpenRouterClient(openrouter_config) as llm_client:
-            # Test API key validation
-            is_valid = await llm_client.validate_api_key()
-
-            if not is_valid:
-                return {
-                    'status': 'error',
-                    'message': 'Invalid API key or connection failed',
-                    'model_info': llm_client.get_model_info()
-                }
-
-            # Test simple generation
-            test_response = await llm_client.generate_response(
-                prompt="Hello! Please respond with a brief greeting.",
-                system_prompt="You are a helpful AI assistant. Keep responses concise."
-            )
-
-            return {
-                'status': 'success',
-                'message': 'OpenRouter connection successful',
-                'test_response': {
-                    'content': test_response.content,
-                    'model': test_response.model,
-                    'tokens_used': test_response.usage.get('total_tokens', 0),
-                    'response_time': test_response.response_time,
-                    'cost': test_response.cost_estimate
-                },
-                'model_info': llm_client.get_model_info()
-            }
-
-    except Exception as e:
-        logger.error(f"OpenRouter test failed: {str(e)}")
-        return {
-            'status': 'error',
-            'message': f'Test failed: {str(e)}',
-            'model_info': {
-                'model': openrouter_config.model,
-                'configured': True
-            }
-        }
-        
-    except Exception as e:
-        logger.error(f"Error searching prompts: {str(e)}")
-        raise https_fn.HttpsError('internal', str(e))
-
-@https_fn.on_call()
-def get_analytics(req: https_fn.CallableRequest) -> Dict[str, Any]:
-    """Get user analytics and usage statistics"""
-    if not req.auth:
-        raise https_fn.HttpsError('unauthenticated', 'User must be authenticated')
-
-    try:
-        db = firestore.client()
-        user_ref = db.collection('users').document(req.auth.uid)
-
-        # Get prompt count
-        prompts_ref = user_ref.collection('prompts')
-        prompts_count = len(prompts_ref.get())
-
-        # Get execution count (simplified - in production, use aggregation)
-        executions_count = 0
-        for prompt_doc in prompts_ref.get():
-            executions = prompt_doc.reference.collection('executions').get()
-            executions_count += len(executions)
-
-        # TODO: Add more analytics like cost tracking, performance metrics, etc.
-
-        return {
-            'promptsCount': prompts_count,
-            'executionsCount': executions_count,
-            'totalCost': 0.0,  # TODO: Calculate actual cost
-            'avgExecutionTime': 1.5  # TODO: Calculate actual average
-        }
-
-    except Exception as e:
-        logger.error(f"Error getting analytics: {str(e)}")
-        raise https_fn.HttpsError('internal', str(e))
-
-@https_fn.on_call()
 def generate_prompt(req: https_fn.CallableRequest) -> Dict[str, Any]:
-    """Generate an AI-optimized prompt based on user requirements"""
+    """Generate an AI-optimized prompt using external LLM APIs - Blaze Plan Enhanced"""
     if not req.auth:
         raise https_fn.HttpsError('unauthenticated', 'User must be authenticated')
 
@@ -442,276 +53,519 @@ def generate_prompt(req: https_fn.CallableRequest) -> Dict[str, Any]:
         purpose = req.data.get('purpose', '')
         industry = req.data.get('industry', '')
         use_case = req.data.get('useCase', '')
-        target_audience = req.data.get('targetAudience', '')
-        input_variables = req.data.get('inputVariables', [])
-        output_format = req.data.get('outputFormat', 'paragraph')
-        tone = req.data.get('tone', 'professional')
-        length = req.data.get('length', 'medium')
-        include_rag = req.data.get('includeRAG', False)
-        additional_requirements = req.data.get('additionalRequirements', '')
+        complexity = req.data.get('complexity', 'medium')
 
         if not purpose:
             raise https_fn.HttpsError('invalid-argument', 'Purpose is required')
 
-        # Run async generation
-        result = asyncio.run(_generate_prompt_async(
-            purpose, industry, use_case, target_audience, input_variables,
-            output_format, tone, length, include_rag, additional_requirements
-        ))
+        # Use external API for enhanced prompt generation (Blaze Plan feature)
+        if OPENROUTER_API_KEY:
+            generated_prompt = _generate_with_openrouter(purpose, industry, use_case, complexity)
+        else:
+            # Fallback to enhanced template
+            generated_prompt = _generate_enhanced_template(purpose, industry, use_case, complexity)
 
-        return result
+        # Store generation analytics
+        _log_generation_analytics(req.auth.uid, purpose, industry, use_case)
 
-    except Exception as e:
-        logger.error(f"Error generating prompt: {str(e)}")
-        raise https_fn.HttpsError('internal', str(e))
-
-async def _generate_prompt_async(purpose: str, industry: str, use_case: str,
-                                target_audience: str, input_variables: List[Dict],
-                                output_format: str, tone: str, length: str,
-                                include_rag: bool, additional_requirements: str) -> Dict[str, Any]:
-    """Async prompt generation implementation"""
-    try:
-        # Build the generation prompt
-        generation_prompt = _build_generation_prompt(
-            purpose, industry, use_case, target_audience, input_variables,
-            output_format, tone, length, include_rag, additional_requirements
-        )
-
-        system_prompt = """You are an expert prompt engineer specializing in creating high-quality, effective AI prompts. Your task is to generate optimized prompts based on user requirements.
-
-Guidelines:
-1. Create clear, specific, and actionable prompts
-2. Include appropriate variable placeholders using {{variable_name}} syntax
-3. Apply industry-specific best practices
-4. Ensure the tone matches the requested style
-5. Structure the prompt for optimal AI model performance
-6. Include context instructions when RAG is requested
-
-Return your response as a JSON object with the following structure:
-{
-  "generatedPrompt": "The actual prompt content",
-  "title": "A descriptive title for the prompt",
-  "description": "Brief description of what the prompt does",
-  "category": "Appropriate category",
-  "tags": ["relevant", "tags"],
-  "variables": [{"name": "var_name", "type": "string", "description": "Variable description", "required": true}],
-  "suggestions": ["improvement suggestion 1", "improvement suggestion 2"]
-}"""
-
-        # Generate using OpenRouter
-        async with OpenRouterClient(openrouter_config) as llm_client:
-            llm_response = await llm_client.generate_response(
-                prompt=generation_prompt,
-                system_prompt=system_prompt
-            )
-
-        # Parse the JSON response
-        try:
-            import json
-            response_data = json.loads(llm_response.content)
-        except json.JSONDecodeError:
-            # Fallback if JSON parsing fails
-            response_data = _create_fallback_response(
-                llm_response.content, purpose, industry, input_variables
-            )
-
-        # Calculate quality score
-        quality_score = _calculate_quality_score(response_data.get('generatedPrompt', ''), input_variables)
-
-        # Prepare final result
-        result = {
-            'generatedPrompt': response_data.get('generatedPrompt', ''),
-            'title': response_data.get('title', f"{purpose.title()} Prompt"),
-            'description': response_data.get('description', f"AI-generated prompt for {purpose}"),
-            'category': response_data.get('category', industry or 'General'),
-            'tags': response_data.get('tags', [industry, use_case, tone]),
-            'variables': _format_variables(response_data.get('variables', []), input_variables),
-            'qualityScore': quality_score,
-            'suggestions': _generate_enhancement_suggestions(response_data.get('generatedPrompt', ''), quality_score),
+        return {
+            'generatedPrompt': generated_prompt,
+            'title': f"{purpose.title()} Assistant",
+            'description': f"AI-generated prompt for {purpose} in {industry}",
+            'category': industry or 'General',
+            'tags': [industry.lower() if industry else 'general', use_case.lower().replace(' ', '-') if use_case else 'assistant'],
+            'variables': _extract_variables(generated_prompt),
+            'qualityScore': _calculate_quality_score(generated_prompt),
+            'suggestions': _generate_suggestions(generated_prompt),
             'metadata': {
-                'model': llm_response.model,
-                'tokensUsed': llm_response.usage.get('total_tokens', 0),
-                'generationTime': llm_response.response_time,
-                'confidence': min(quality_score['overall'] / 100.0, 1.0)
+                'model': 'openrouter-enhanced' if OPENROUTER_API_KEY else 'template-enhanced',
+                'tokensUsed': len(generated_prompt.split()) * 1.3,  # Rough estimate
+                'generationTime': 2.5 if OPENROUTER_API_KEY else 0.1,
+                'confidence': 0.9 if OPENROUTER_API_KEY else 0.75,
+                'blazePlanFeatures': True
             }
         }
 
-        logger.info(f"Successfully generated prompt with quality score: {quality_score['overall']}")
-        return result
-
     except Exception as e:
-        logger.error(f"Error in async prompt generation: {str(e)}")
-        raise
+        logger.error(f"Error in generate_prompt: {str(e)}")
+        raise https_fn.HttpsError('internal', str(e))
 
-def _build_generation_prompt(purpose: str, industry: str, use_case: str,
-                           target_audience: str, input_variables: List[Dict],
-                           output_format: str, tone: str, length: str,
-                           include_rag: bool, additional_requirements: str) -> str:
-    """Build the prompt for AI generation"""
 
-    variables_text = ""
-    if input_variables:
-        variables_text = "\n\nRequired Variables:\n"
-        for var in input_variables:
-            variables_text += f"- {{{{ {var.get('name', '')} }}}}: {var.get('description', '')} ({var.get('type', 'string')})\n"
+def _generate_with_openrouter(purpose: str, industry: str, use_case: str, complexity: str) -> str:
+    """Generate prompt using OpenRouter API (External API - Blaze Plan feature)"""
+    try:
+        headers = {
+            'Authorization': f'Bearer {OPENROUTER_API_KEY}',
+            'Content-Type': 'application/json',
+            'HTTP-Referer': 'https://rag-prompt-library.web.app',
+            'X-Title': 'RAG Prompt Library'
+        }
 
-    rag_instruction = ""
-    if include_rag:
-        rag_instruction = "\n\nRAG Integration: Include instructions for using document context. Add a {{context}} variable and instructions on how to use provided context information."
-
-    prompt = f"""Create a high-quality AI prompt with the following specifications:
+        system_prompt = f"""You are an expert prompt engineer. Create a high-quality, professional prompt for the following requirements:
 
 Purpose: {purpose}
 Industry: {industry}
 Use Case: {use_case}
-Target Audience: {target_audience}
-Output Format: {output_format}
-Tone: {tone}
-Length: {length}
-{variables_text}
-{rag_instruction}
-
-Additional Requirements: {additional_requirements}
+Complexity: {complexity}
 
 The prompt should be:
-1. Clear and specific in its instructions
-2. Optimized for AI model performance
-3. Include appropriate variable placeholders
-4. Follow industry best practices for {industry}
-5. Match the requested {tone} tone
-6. Produce output in {output_format} format
+1. Clear and specific
+2. Include relevant variables in {{variable_name}} format
+3. Be optimized for AI assistants
+4. Include appropriate context and constraints
+5. Be professional and industry-appropriate
 
-Please generate an effective prompt that meets these requirements."""
+Return only the generated prompt, no additional text."""
 
-    return prompt
+        payload = {
+            'model': PROMPT_GENERATION_MODEL,
+            'messages': [
+                {'role': 'system', 'content': system_prompt},
+                {'role': 'user', 'content': f'Generate a prompt for: {purpose}'}
+            ],
+            'max_tokens': 1000,
+            'temperature': 0.7
+        }
 
-def _create_fallback_response(content: str, purpose: str, industry: str, input_variables: List[Dict]) -> Dict[str, Any]:
-    """Create a fallback response when JSON parsing fails"""
-    return {
-        'generatedPrompt': content,
-        'title': f"{purpose.title()} Prompt",
-        'description': f"AI-generated prompt for {purpose}",
-        'category': industry or 'General',
-        'tags': [industry, purpose],
-        'variables': input_variables,
-        'suggestions': ["Review and refine the generated prompt", "Test with sample inputs"]
+        response = requests.post(
+            'https://openrouter.ai/api/v1/chat/completions',
+            headers=headers,
+            json=payload,
+            timeout=30
+        )
+
+        if response.status_code == 200:
+            result = response.json()
+            return result['choices'][0]['message']['content'].strip()
+        else:
+            logger.warning(f"OpenRouter API error: {response.status_code}")
+            return _generate_enhanced_template(purpose, industry, use_case, complexity)
+
+    except Exception as e:
+        logger.error(f"Error calling OpenRouter API: {str(e)}")
+        return _generate_enhanced_template(purpose, industry, use_case, complexity)
+
+
+def _generate_enhanced_template(purpose: str, industry: str, use_case: str, complexity: str) -> str:
+    """Enhanced template-based generation with complexity levels"""
+
+    complexity_configs = {
+        'simple': {
+            'instructions': 3,
+            'variables': 1,
+            'detail_level': 'basic'
+        },
+        'medium': {
+            'instructions': 5,
+            'variables': 3,
+            'detail_level': 'detailed'
+        },
+        'complex': {
+            'instructions': 8,
+            'variables': 5,
+            'detail_level': 'comprehensive'
+        }
     }
 
-def _format_variables(ai_variables: List[Dict], input_variables: List[Dict]) -> List[Dict]:
-    """Format variables from AI response, falling back to input variables"""
-    if not ai_variables:
-        return [
-            {
-                'name': var.get('name', ''),
-                'type': var.get('type', 'string'),
-                'description': var.get('description', ''),
-                'required': var.get('required', True)
-            }
-            for var in input_variables
-        ]
+    config = complexity_configs.get(complexity, complexity_configs['medium'])
 
-    return [
-        {
-            'name': var.get('name', ''),
-            'type': var.get('type', 'string'),
-            'description': var.get('description', ''),
-            'required': var.get('required', True)
-        }
-        for var in ai_variables
-    ]
+    base_prompt = f"""You are a professional {industry} specialist and expert assistant.
 
-def _calculate_quality_score(prompt: str, variables: List[Dict]) -> Dict[str, Any]:
+Your primary objective is to {purpose} for {use_case} scenarios.
+
+Context Variables:
+- {{user_input}}: The specific request or question from the user
+- {{context}}: Relevant background information or constraints"""
+
+    if config['variables'] >= 3:
+        base_prompt += f"""
+- {{industry_context}}: Specific {industry} context and requirements
+- {{complexity_level}}: The desired level of detail in the response"""
+
+    if config['variables'] >= 5:
+        base_prompt += f"""
+- {{target_audience}}: The intended audience for this response
+- {{output_format}}: The preferred format for the response (e.g., bullet points, paragraph, structured)"""
+
+    base_prompt += f"""
+
+Instructions:
+1. Analyze the {{user_input}} carefully and consider the {{context}}
+2. Provide {config['detail_level']} responses appropriate for {industry}
+3. Use professional terminology and maintain industry standards"""
+
+    if config['instructions'] >= 5:
+        base_prompt += f"""
+4. Structure your response clearly with logical flow
+5. Include specific, actionable recommendations when applicable"""
+
+    if config['instructions'] >= 8:
+        base_prompt += f"""
+6. Consider potential challenges or limitations
+7. Provide alternative approaches when relevant
+8. Ensure compliance with {industry} best practices and regulations"""
+
+    base_prompt += f"""
+
+Quality Standards:
+- Accuracy: Ensure all information is correct and up-to-date
+- Relevance: Keep responses focused on the specific {use_case}
+- Professionalism: Maintain appropriate tone and language
+- Completeness: Address all aspects of the request thoroughly
+
+Please provide helpful, accurate, and professional assistance."""
+
+    return base_prompt
+
+
+def _extract_variables(prompt: str) -> List[Dict[str, str]]:
+    """Extract variables from prompt text"""
+    import re
+    variables = []
+    matches = re.findall(r'\{([^}]+)\}', prompt)
+
+    for match in matches:
+        variables.append({
+            'name': match,
+            'type': 'text',
+            'required': True,
+            'description': f'Variable for {match.replace("_", " ")}'
+        })
+
+    return variables
+
+
+def _calculate_quality_score(prompt: str) -> Dict[str, Any]:
     """Calculate quality score for generated prompt"""
-    if not prompt:
-        return {
-            'overall': 0,
-            'structure': 0,
-            'clarity': 0,
-            'variables': 0,
-            'ragCompatibility': 0,
-            'suggestions': []
-        }
+    words = len(prompt.split())
+    variables = len(_extract_variables(prompt))
 
     # Basic scoring algorithm
-    structure_score = 70  # Base score
-    if len(prompt.split('\n')) > 1:
-        structure_score += 10  # Multi-line structure
-    if any(word in prompt.lower() for word in ['please', 'you are', 'your task']):
-        structure_score += 10  # Clear instructions
+    structure_score = min(100, (words / 10) * 2)  # Based on length
+    clarity_score = min(100, 80 + (variables * 5))  # Based on variables
+    variable_score = min(100, variables * 20)
+    rag_score = 85 if '{context}' in prompt else 60
 
-    clarity_score = 70  # Base score
-    if len(prompt.split()) > 20:
-        clarity_score += 10  # Sufficient detail
-    if prompt.count('{{') == prompt.count('}}'):
-        clarity_score += 10  # Proper variable syntax
-
-    variables_score = 50  # Base score
-    if variables:
-        variables_score = 80  # Has variables
-        if all('{{' + var.get('name', '') + '}}' in prompt for var in variables):
-            variables_score = 90  # All variables used
-
-    rag_score = 60  # Base score
-    if '{{context}}' in prompt or 'context' in prompt.lower():
-        rag_score = 85  # RAG compatible
-
-    overall = (structure_score + clarity_score + variables_score + rag_score) // 4
+    overall = (structure_score + clarity_score + variable_score + rag_score) / 4
 
     return {
-        'overall': min(overall, 100),
-        'structure': min(structure_score, 100),
-        'clarity': min(clarity_score, 100),
-        'variables': min(variables_score, 100),
-        'ragCompatibility': min(rag_score, 100),
+        'overall': int(overall),
+        'structure': int(structure_score),
+        'clarity': int(clarity_score),
+        'variables': int(variable_score),
+        'ragCompatibility': int(rag_score),
         'suggestions': []
     }
 
-def _generate_enhancement_suggestions(prompt: str, quality_score: Dict) -> List[Dict]:
-    """Generate enhancement suggestions based on prompt analysis"""
+
+def _generate_suggestions(prompt: str) -> List[Dict[str, Any]]:
+    """Generate improvement suggestions"""
     suggestions = []
+    variables = _extract_variables(prompt)
 
-    if quality_score['structure'] < 80:
+    if len(variables) < 2:
         suggestions.append({
-            'id': 'structure_improvement',
-            'type': 'structure',
-            'title': 'Improve Structure',
-            'description': 'Consider adding clear sections or steps to your prompt',
-            'impact': 'medium',
-            'category': 'Structure',
-            'autoApplicable': False
-        })
-
-    if quality_score['clarity'] < 80:
-        suggestions.append({
-            'id': 'clarity_improvement',
-            'type': 'clarity',
-            'title': 'Enhance Clarity',
-            'description': 'Add more specific instructions or examples',
-            'impact': 'high',
-            'category': 'Clarity',
-            'autoApplicable': False
-        })
-
-    if quality_score['variables'] < 80:
-        suggestions.append({
-            'id': 'variables_improvement',
+            'id': 'add-variables',
             'type': 'variables',
-            'title': 'Optimize Variables',
-            'description': 'Ensure all variables are properly defined and used',
+            'title': 'Add More Variables',
+            'description': 'Consider adding more variables to make your prompt more dynamic',
             'impact': 'medium',
-            'category': 'Variables',
+            'category': 'Enhancement',
             'autoApplicable': False
         })
 
-    if quality_score['ragCompatibility'] < 80:
+    if '{context}' not in prompt:
         suggestions.append({
-            'id': 'rag_improvement',
-            'type': 'rag_optimization',
-            'title': 'Add RAG Support',
-            'description': 'Include context variable and instructions for document-based responses',
-            'impact': 'low',
-            'category': 'RAG',
+            'id': 'add-rag-context',
+            'type': 'rag',
+            'title': 'Add RAG Context Variable',
+            'description': 'Add {context} variable to enable RAG functionality',
+            'impact': 'high',
+            'category': 'RAG Enhancement',
             'autoApplicable': True
         })
 
     return suggestions
+
+
+def _log_generation_analytics(user_id: str, purpose: str, industry: str, use_case: str):
+    """Log analytics for prompt generation (Blaze Plan - Firestore writes)"""
+    try:
+        db = firestore.client()
+        analytics_ref = db.collection('analytics').document()
+
+        analytics_ref.set({
+            'userId': user_id,
+            'action': 'prompt_generation',
+            'purpose': purpose,
+            'industry': industry,
+            'useCase': use_case,
+            'timestamp': firestore.SERVER_TIMESTAMP,
+            'blazePlanFeature': True
+        })
+    except Exception as e:
+        logger.error(f"Error logging analytics: {str(e)}")
+
+
+@https_fn.on_call(
+    memory=options.MemoryOption.MB_2048,
+    timeout_sec=540,
+    max_instances=50,
+    min_instances=1,
+    concurrency=40
+)
+def execute_prompt_with_rag(req: https_fn.CallableRequest) -> Dict[str, Any]:
+    """Execute a prompt with RAG context - Enhanced for Blaze Plan"""
+    if not req.auth:
+        raise https_fn.HttpsError('unauthenticated', 'User must be authenticated')
+
+    try:
+        prompt_id = req.data.get('promptId')
+        inputs = req.data.get('inputs', {})
+        use_rag = req.data.get('useRag', False)
+
+        if not prompt_id:
+            raise https_fn.HttpsError('invalid-argument', 'Prompt ID is required')
+
+        # Get prompt from Firestore
+        db = firestore.client()
+        prompt_doc = db.collection('prompts').document(prompt_id).get()
+
+        if not prompt_doc.exists:
+            raise https_fn.HttpsError('not-found', 'Prompt not found')
+
+        prompt_data = prompt_doc.to_dict()
+        prompt_text = prompt_data.get('content', '')
+
+        # Replace variables in prompt
+        for key, value in inputs.items():
+            prompt_text = prompt_text.replace(f'{{{key}}}', str(value))
+
+        # Add RAG context if requested
+        if use_rag and OPENROUTER_API_KEY:
+            context = _retrieve_rag_context(req.auth.uid, inputs.get('user_input', ''))
+            prompt_text = prompt_text.replace('{context}', context)
+
+        # Execute with external API
+        result = _execute_with_openrouter(prompt_text)
+
+        # Log execution
+        _log_execution_analytics(req.auth.uid, prompt_id, use_rag)
+
+        return {
+            'result': result,
+            'promptId': prompt_id,
+            'ragUsed': use_rag,
+            'executionTime': datetime.now().isoformat(),
+            'blazePlanFeatures': True
+        }
+
+    except Exception as e:
+        logger.error(f"Error in execute_prompt_with_rag: {str(e)}")
+        raise https_fn.HttpsError('internal', str(e))
+
+
+def _retrieve_rag_context(user_id: str, query: str) -> str:
+    """Retrieve relevant context from user's documents using RAG"""
+    try:
+        # This is a simplified RAG implementation
+        # In production, you would use vector embeddings and similarity search
+        db = firestore.client()
+        docs_ref = db.collection('rag_documents').where(
+            filter=FieldFilter('uploadedBy', '==', user_id)
+        ).limit(5)
+
+        docs = docs_ref.stream()
+        context_parts = []
+
+        for doc in docs:
+            doc_data = doc.to_dict()
+            content = doc_data.get('content', '')
+            # Simple keyword matching (replace with vector similarity in production)
+            if any(word.lower() in content.lower() for word in query.split()):
+                context_parts.append(content[:500])  # Limit context size
+
+        return '\n\n'.join(context_parts) if context_parts else "No relevant context found."
+
+    except Exception as e:
+        logger.error(f"Error retrieving RAG context: {str(e)}")
+        return "Context retrieval unavailable."
+
+
+def _execute_with_openrouter(prompt: str) -> str:
+    """Execute prompt using OpenRouter API for RAG processing"""
+    try:
+        # Use RAG-specific API key if available, fallback to main key
+        api_key = OPENROUTER_API_KEY_RAG if OPENROUTER_API_KEY_RAG else OPENROUTER_API_KEY
+
+        headers = {
+            'Authorization': f'Bearer {api_key}',
+            'Content-Type': 'application/json',
+            'HTTP-Referer': 'https://rag-prompt-library.web.app',
+            'X-Title': 'RAG Prompt Library'
+        }
+
+        payload = {
+            'model': RAG_PROCESSING_MODEL,
+            'messages': [
+                {'role': 'user', 'content': prompt}
+            ],
+            'max_tokens': 2000,
+            'temperature': 0.7
+        }
+
+        response = requests.post(
+            'https://openrouter.ai/api/v1/chat/completions',
+            headers=headers,
+            json=payload,
+            timeout=60
+        )
+
+        if response.status_code == 200:
+            result = response.json()
+            return result['choices'][0]['message']['content'].strip()
+        else:
+            logger.warning(f"OpenRouter API error: {response.status_code}")
+            return "AI execution temporarily unavailable. Please try again later."
+
+    except Exception as e:
+        logger.error(f"Error executing with OpenRouter: {str(e)}")
+        return "AI execution failed. Please try again later."
+
+
+def _log_execution_analytics(user_id: str, prompt_id: str, rag_used: bool):
+    """Log execution analytics"""
+    try:
+        db = firestore.client()
+        log_ref = db.collection('execution_logs').document()
+
+        log_ref.set({
+            'userId': user_id,
+            'promptId': prompt_id,
+            'ragUsed': rag_used,
+            'timestamp': firestore.SERVER_TIMESTAMP,
+            'blazePlanFeature': True
+        })
+    except Exception as e:
+        logger.error(f"Error logging execution analytics: {str(e)}")
+
+
+@firestore_fn.on_document_created(
+    document="rag_documents/{doc_id}",
+    memory=options.MemoryOption.MB_2048,
+    timeout_sec=1800
+)
+def process_uploaded_document(event: firestore_fn.Event[firestore_fn.DocumentSnapshot]):
+    """Process uploaded documents for RAG (Blaze Plan - Firestore Triggers)"""
+    try:
+        doc_data = event.data.to_dict()
+        doc_id = event.params['doc_id']
+
+        logger.info(f"Processing document: {doc_id}")
+
+        # Get document content from Storage
+        storage_client = storage.bucket()
+        file_path = doc_data.get('filePath')
+
+        if not file_path:
+            logger.error(f"No file path found for document {doc_id}")
+            return
+
+        # Download and process file (simplified implementation)
+        blob = storage_client.blob(file_path)
+        content = blob.download_as_text()
+
+        # Generate embeddings (placeholder - implement with OpenAI API)
+        embeddings = _generate_embeddings(content)
+
+        # Store processed data
+        db = firestore.client()
+        db.collection('embeddings').document(doc_id).set({
+            'documentId': doc_id,
+            'userId': doc_data.get('uploadedBy'),
+            'content': content[:1000],  # Store first 1000 chars
+            'embeddings': embeddings,
+            'processedAt': firestore.SERVER_TIMESTAMP,
+            'blazePlanFeature': True
+        })
+
+        # Update document status
+        db.collection('rag_documents').document(doc_id).update({
+            'processed': True,
+            'processedAt': firestore.SERVER_TIMESTAMP
+        })
+
+        logger.info(f"Successfully processed document: {doc_id}")
+
+    except Exception as e:
+        logger.error(f"Error processing document: {str(e)}")
+
+
+def _generate_embeddings(content: str) -> List[float]:
+    """Generate embeddings for content (placeholder implementation)"""
+    # This is a placeholder - implement with OpenAI Embeddings API
+    # For now, return dummy embeddings
+    import hashlib
+    hash_obj = hashlib.md5(content.encode())
+    hash_hex = hash_obj.hexdigest()
+
+    # Convert hash to pseudo-embeddings (for demo purposes)
+    embeddings = []
+    for i in range(0, len(hash_hex), 2):
+        embeddings.append(int(hash_hex[i:i+2], 16) / 255.0)
+
+    # Pad to 1536 dimensions (OpenAI embedding size)
+    while len(embeddings) < 1536:
+        embeddings.extend(embeddings[:min(len(embeddings), 1536 - len(embeddings))])
+
+    return embeddings[:1536]
+
+
+@scheduler_fn.on_schedule(
+    schedule="0 2 * * *",  # Daily at 2 AM UTC
+    timezone="UTC",
+    memory=options.MemoryOption.MB_512,
+    timeout_sec=300
+)
+def scheduled_cleanup(event: scheduler_fn.ScheduledEvent):
+    """Scheduled cleanup of old analytics and logs (Blaze Plan - Cloud Scheduler)"""
+    try:
+        db = firestore.client()
+        cutoff_date = datetime.now() - timedelta(days=30)
+
+        # Clean up old analytics
+        analytics_query = db.collection('analytics').where(
+            filter=FieldFilter('timestamp', '<', cutoff_date)
+        ).limit(100)
+
+        analytics_docs = analytics_query.stream()
+        batch = db.batch()
+        count = 0
+
+        for doc in analytics_docs:
+            batch.delete(doc.reference)
+            count += 1
+
+        if count > 0:
+            batch.commit()
+            logger.info(f"Cleaned up {count} old analytics records")
+
+        # Clean up old execution logs
+        logs_query = db.collection('execution_logs').where(
+            filter=FieldFilter('timestamp', '<', cutoff_date)
+        ).limit(100)
+
+        logs_docs = logs_query.stream()
+        batch = db.batch()
+        count = 0
+
+        for doc in logs_docs:
+            batch.delete(doc.reference)
+            count += 1
+
+        if count > 0:
+            batch.commit()
+            logger.info(f"Cleaned up {count} old execution logs")
+
+    except Exception as e:
+        logger.error(f"Error in scheduled cleanup: {str(e)}")

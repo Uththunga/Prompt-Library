@@ -19,6 +19,11 @@ frontend/.env.local
 frontend/.env.development.local
 frontend/.env.test.local
 frontend/.env.production.local
+functions/.env
+functions/.env.local
+functions/.env.development.local
+functions/.env.test.local
+functions/.env.production.local
 
 # Firebase
 .firebase/
@@ -26,6 +31,9 @@ frontend/.env.production.local
 firebase-debug.log
 firestore-debug.log
 ui-debug.log
+# Firebase service account keys (NEVER commit these!)
+*firebase-adminsdk*.json
+*service-account*.json
 
 # Logs
 npm-debug.log*

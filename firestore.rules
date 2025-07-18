@@ -33,12 +33,32 @@ service cloud.firestore {
     match /workspaces/{workspaceId} {
       allow read, write: if request.auth != null &&
         request.auth.uid in resource.data.members;
-        
+
       // Shared prompts in workspace
       match /shared_prompts/{promptId} {
         allow read, write: if request.auth != null &&
           request.auth.uid in get(/databases/$(database)/documents/workspaces/$(workspaceId)).data.members;
       }
+    }
+
+    // Analytics collection (Blaze Plan feature)
+    match /analytics/{analyticsId} {
+      allow create: if request.auth != null;
+      allow read: if request.auth != null &&
+        request.auth.uid == resource.data.userId;
+    }
+
+    // Execution logs (Blaze Plan feature)
+    match /execution_logs/{logId} {
+      allow create: if request.auth != null;
+      allow read: if request.auth != null &&
+        request.auth.uid == resource.data.userId;
+    }
+
+    // Vector embeddings (Blaze Plan RAG feature)
+    match /embeddings/{embeddingId} {
+      allow read, write: if request.auth != null &&
+        request.auth.uid == resource.data.userId;
     }
   }
 }

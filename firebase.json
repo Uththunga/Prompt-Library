@@ -24,13 +24,25 @@
       }
     ]
   },
-  "functions": {
-    "source": "functions",
-    "runtime": "python311",
-    "predeploy": [
-      "pip install -r functions/requirements.txt"
-    ]
-  },
+  "functions": [
+    {
+      "source": "functions",
+      "runtime": "python311",
+      "predeploy": [
+        "pip install -r functions/requirements.txt"
+      ],
+      "ignore": [
+        "node_modules",
+        ".git",
+        "firebase-debug.log",
+        "firebase-debug.*.log",
+        "*.pyc",
+        "__pycache__",
+        ".pytest_cache",
+        "tests/"
+      ]
+    }
+  ],
   "firestore": {
     "rules": "firestore.rules",
     "indexes": "firestore.indexes.json"
